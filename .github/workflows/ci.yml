@@ -57,7 +57,7 @@ jobs:
       - run: npm run test:integration
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     needs:
       - quality
       - postgres-integration

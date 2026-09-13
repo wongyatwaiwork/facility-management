@@ -252,7 +252,7 @@ Prerequisites: Docker Desktop/Engine with Compose.
 
 ```bash
 git clone <repository-url>
-cd facility-maintenance-system
+cd facility-management
 docker compose up --build
 ```
 
