@@ -1,0 +1,535 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMINISTRATOR
+  FACILITY_MANAGER
+  COORDINATOR
+  TECHNICIAN
+  AUDITOR
+}
+
+enum ThemePreference {
+  SYSTEM
+  LIGHT
+  DARK
+}
+
+enum AssetStatus {
+  OPERATIONAL
+  DEGRADED
+  OUT_OF_SERVICE
+  DECOMMISSIONED
+}
+
+enum AssetCriticality {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum WorkOrderType {
+  REACTIVE
+  PREVENTIVE
+  INSPECTION_FOLLOW_UP
+  OTHER
+}
+
+enum WorkOrderPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum WorkOrderStatus {
+  OPEN
+  TRIAGED
+  ASSIGNED
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  VERIFIED
+  CLOSED
+  CANCELLED
+}
+
+enum RecurrenceInterval {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum InspectionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum InspectionResult {
+  SATISFACTORY
+  ATTENTION_REQUIRED
+  NOT_APPLICABLE
+}
+
+enum InspectionAnswerType {
+  PASS_FAIL_NA
+  YES_NO
+  NUMERIC
+  TEXT
+}
+
+enum DocumentCategory {
+  PHOTO
+  MANUAL
+  COMPLETION_EVIDENCE
+  INSPECTION_RECORD
+  OTHER
+}
+
+model User {
+  id                     String                  @id @default(cuid())
+  email                  String                  @unique
+  name                   String
+  passwordHash           String
+  role                   Role
+  isActive               Boolean                 @default(true)
+  locale                 String                  @default("en")
+  theme                  ThemePreference         @default(SYSTEM)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  siteAccess             UserSiteAccess[]
+  sessions               Session[]
+  reportedWorkOrders     WorkOrder[]             @relation("WorkOrderReporter")
+  assignedWorkOrders     WorkOrder[]             @relation("WorkOrderTechnician")
+  completedWorkOrders    WorkOrder[]             @relation("WorkOrderCompleter")
+  verifiedWorkOrders     WorkOrder[]             @relation("WorkOrderVerifier")
+  statusChanges          WorkOrderStatusHistory[]
+  preventivePlans        PreventiveMaintenancePlan[]
+  assignedInspections    Inspection[]            @relation("InspectionInspector")
+  reviewedInspections    Inspection[]            @relation("InspectionReviewer")
+  uploadedDocuments      DocumentMetadata[]
+  auditLogs              AuditLog[]
+
+  @@index([role, isActive])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model UserSiteAccess {
+  userId    String
+  siteId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  site      Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@id([userId, siteId])
+  @@index([siteId])
+}
+
+model Site {
+  id               String                       @id @default(cuid())
+  code             String                       @unique
+  name             String
+  city             String
+  region           String
+  timezone         String                       @default("Europe/Berlin")
+  isActive         Boolean                      @default(true)
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+  userAccess       UserSiteAccess[]
+  buildings        Building[]
+  locations        Location[]
+  assets           Asset[]
+  workOrders       WorkOrder[]
+  preventivePlans  PreventiveMaintenancePlan[]
+  inspectionTemplates InspectionTemplate[]
+  inspections      Inspection[]
+  contractorSites  ContractorSite[]
+  auditLogs        AuditLog[]
+
+  @@index([name])
+}
+
+model Building {
+  id         String      @id @default(cuid())
+  siteId     String
+  code       String
+  name       String
+  description String?
+  isActive   Boolean     @default(true)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  site       Site        @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  locations  Location[]
+  assets     Asset[]
+  workOrders WorkOrder[]
+
+  @@unique([siteId, code])
+  @@index([siteId, name])
+}
+
+model Location {
+  id          String       @id @default(cuid())
+  siteId      String
+  buildingId  String
+  code        String
+  name        String
+  kind        String
+  floor       String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  site        Site         @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  building    Building     @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  assets      Asset[]
+  workOrders  WorkOrder[]
+  inspections Inspection[]
+
+  @@unique([buildingId, code])
+  @@index([siteId, name])
+  @@index([buildingId])
+}
+
+model AssetCategory {
+  id                  String                       @id @default(cuid())
+  code                String                       @unique
+  name                String
+  assets              Asset[]
+  preventivePlans     PreventiveMaintenancePlan[]
+  inspectionTemplates InspectionTemplate[]
+}
+
+model Asset {
+  id               String             @id @default(cuid())
+  internalCode     String             @unique
+  name             String
+  siteId           String
+  buildingId       String
+  locationId       String
+  categoryId       String
+  manufacturer     String?
+  model            String?
+  serialNumber     String?
+  commissionedAt   DateTime?
+  warrantyExpiresAt DateTime?
+  status           AssetStatus        @default(OPERATIONAL)
+  criticality      AssetCriticality   @default(MEDIUM)
+  responsibleTeam  String
+  notes            String?
+  tags             String[]           @default([])
+  isActive         Boolean            @default(true)
+  version          Int                @default(1)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  site             Site               @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  building         Building           @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  location         Location           @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  category         AssetCategory      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  workOrders       WorkOrder[]
+  preventivePlans  PreventiveMaintenancePlan[]
+  inspections      Inspection[]
+  documents        DocumentMetadata[]
+
+  @@index([siteId, status, criticality])
+  @@index([siteId, categoryId, name, id])
+  @@index([locationId])
+}
+
+model Contractor {
+  id                String           @id @default(cuid())
+  companyName       String           @unique
+  email             String
+  phone             String?
+  serviceCategories String[]         @default([])
+  isActive          Boolean          @default(true)
+  approvedForDemo   Boolean          @default(true)
+  notes             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  sites             ContractorSite[]
+  workOrders        WorkOrder[]
+
+  @@index([isActive, companyName])
+}
+
+model ContractorSite {
+  contractorId String
+  siteId       String
+  contractor   Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  site         Site       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@id([contractorId, siteId])
+  @@index([siteId])
+}
+
+model WorkOrder {
+  id                     String                   @id @default(cuid())
+  number                 String                   @unique
+  title                  String
+  description            String
+  type                   WorkOrderType
+  priority               WorkOrderPriority
+  status                 WorkOrderStatus          @default(OPEN)
+  siteId                 String
+  buildingId             String?
+  locationId             String?
+  assetId                String?
+  reporterId             String
+  assignedTechnicianId   String?
+  contractorId           String?
+  completedById          String?
+  verifiedById           String?
+  targetStartAt          DateTime?
+  dueAt                  DateTime
+  actualStartAt          DateTime?
+  completedAt            DateTime?
+  verifiedAt             DateTime?
+  estimatedMinutes       Int?
+  actualMinutes          Int?
+  completionNotes        String?
+  cancellationReason     String?
+  version                Int                      @default(1)
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  site                   Site                     @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  building               Building?                @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  location               Location?                @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  asset                  Asset?                   @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  reporter               User                     @relation("WorkOrderReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  assignedTechnician     User?                    @relation("WorkOrderTechnician", fields: [assignedTechnicianId], references: [id], onDelete: Restrict)
+  contractor             Contractor?              @relation(fields: [contractorId], references: [id], onDelete: Restrict)
+  completedBy            User?                    @relation("WorkOrderCompleter", fields: [completedById], references: [id], onDelete: Restrict)
+  verifiedBy             User?                    @relation("WorkOrderVerifier", fields: [verifiedById], references: [id], onDelete: Restrict)
+  statusHistory          WorkOrderStatusHistory[]
+  occurrence             MaintenanceOccurrence?
+  inspectionFinding      InspectionFinding?
+  documents              DocumentMetadata[]
+
+  @@index([siteId, status, dueAt, id])
+  @@index([siteId, priority, updatedAt, id])
+  @@index([assignedTechnicianId, status, dueAt])
+  @@index([assetId, createdAt])
+  @@index([contractorId, createdAt])
+}
+
+model WorkOrderStatusHistory {
+  id          String          @id @default(cuid())
+  workOrderId String
+  fromStatus  WorkOrderStatus?
+  toStatus    WorkOrderStatus
+  actorId     String
+  note        String?
+  createdAt   DateTime        @default(now())
+  workOrder   WorkOrder       @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+  actor       User            @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([workOrderId, createdAt])
+}
+
+model PreventiveMaintenancePlan {
+  id                 String              @id @default(cuid())
+  title              String
+  instructions       String
+  siteId             String
+  assetId            String?
+  assetCategoryId    String?
+  defaultAssigneeId  String?
+  recurrence         RecurrenceInterval
+  timezone           String              @default("Europe/Berlin")
+  nextDueAt          DateTime
+  leadDays           Int                 @default(7)
+  procedureReference String?
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  site               Site                @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  asset              Asset?              @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  assetCategory      AssetCategory?      @relation(fields: [assetCategoryId], references: [id], onDelete: Restrict)
+  defaultAssignee    User?               @relation(fields: [defaultAssigneeId], references: [id], onDelete: Restrict)
+  occurrences        MaintenanceOccurrence[]
+
+  @@index([isActive, nextDueAt])
+  @@index([siteId, isActive, nextDueAt])
+}
+
+model MaintenanceOccurrence {
+  id           String                    @id @default(cuid())
+  planId       String
+  scheduledFor DateTime
+  workOrderId  String                    @unique
+  generatedAt  DateTime                  @default(now())
+  plan         PreventiveMaintenancePlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  workOrder    WorkOrder                 @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+
+  @@unique([planId, scheduledFor])
+  @@index([scheduledFor])
+}
+
+model InspectionTemplate {
+  id              String                      @id @default(cuid())
+  title           String
+  purpose         String
+  siteId          String
+  assetCategoryId String?
+  isActive        Boolean                     @default(true)
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+  site            Site                        @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  assetCategory   AssetCategory?              @relation(fields: [assetCategoryId], references: [id], onDelete: Restrict)
+  versions        InspectionTemplateVersion[]
+
+  @@index([siteId, isActive, title])
+}
+
+model InspectionTemplateVersion {
+  id           String                   @id @default(cuid())
+  templateId   String
+  version      Int
+  reference    String?
+  createdAt    DateTime                 @default(now())
+  template     InspectionTemplate       @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  items        InspectionTemplateItem[]
+  inspections  Inspection[]
+
+  @@unique([templateId, version])
+}
+
+model InspectionTemplateItem {
+  id             String                    @id @default(cuid())
+  versionId      String
+  itemKey        String
+  position       Int
+  label          String
+  answerType     InspectionAnswerType
+  isRequired     Boolean                   @default(true)
+  guidance       String?
+  version        InspectionTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId, itemKey])
+  @@unique([versionId, position])
+}
+
+model Inspection {
+  id                String                    @id @default(cuid())
+  number            String                    @unique
+  siteId            String
+  assetId           String?
+  locationId        String?
+  templateVersionId String
+  checklistSnapshot Json
+  status            InspectionStatus          @default(SCHEDULED)
+  dueAt             DateTime
+  inspectorId       String
+  reviewerId        String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  reviewedAt        DateTime?
+  result            InspectionResult?
+  completionNotes   String?
+  version           Int                       @default(1)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  site              Site                      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  asset             Asset?                    @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  location          Location?                 @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  templateVersion   InspectionTemplateVersion @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  inspector         User                      @relation("InspectionInspector", fields: [inspectorId], references: [id], onDelete: Restrict)
+  reviewer          User?                     @relation("InspectionReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+  responses         InspectionResponse[]
+  findings          InspectionFinding[]
+  documents         DocumentMetadata[]
+
+  @@index([siteId, status, dueAt, id])
+  @@index([inspectorId, status, dueAt])
+  @@index([assetId, completedAt])
+}
+
+model InspectionResponse {
+  id              String      @id @default(cuid())
+  inspectionId    String
+  itemKey         String
+  labelSnapshot   String
+  answerType      InspectionAnswerType
+  answer           Json
+  notes            String?
+  recordedAt       DateTime    @default(now())
+  inspection       Inspection  @relation(fields: [inspectionId], references: [id], onDelete: Restrict)
+  finding          InspectionFinding?
+
+  @@unique([inspectionId, itemKey])
+}
+
+model InspectionFinding {
+  id                    String             @id @default(cuid())
+  inspectionId          String
+  responseId            String             @unique
+  summary               String
+  severity              String
+  correctiveWorkOrderId String?            @unique
+  createdAt             DateTime           @default(now())
+  inspection            Inspection         @relation(fields: [inspectionId], references: [id], onDelete: Restrict)
+  response              InspectionResponse @relation(fields: [responseId], references: [id], onDelete: Restrict)
+  correctiveWorkOrder   WorkOrder?         @relation(fields: [correctiveWorkOrderId], references: [id], onDelete: Restrict)
+
+  @@index([inspectionId])
+}
+
+model DocumentMetadata {
+  id           String           @id @default(cuid())
+  filename     String
+  contentType  String
+  sizeBytes    Int
+  category     DocumentCategory
+  uploaderId   String
+  assetId      String?
+  workOrderId  String?
+  inspectionId String?
+  storageKey   String?
+  createdAt    DateTime         @default(now())
+  uploader     User             @relation(fields: [uploaderId], references: [id], onDelete: Restrict)
+  asset        Asset?           @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  workOrder    WorkOrder?       @relation(fields: [workOrderId], references: [id], onDelete: Restrict)
+  inspection   Inspection?      @relation(fields: [inspectionId], references: [id], onDelete: Restrict)
+
+  @@index([assetId])
+  @@index([workOrderId])
+  @@index([inspectionId])
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  actorId       String?
+  siteId        String?
+  action        String
+  entityType    String
+  entityId      String?
+  requestId     String?
+  summary       Json
+  createdAt     DateTime @default(now())
+  actor         User?    @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  site          Site?    @relation(fields: [siteId], references: [id], onDelete: Restrict)
+
+  @@index([siteId, createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+}

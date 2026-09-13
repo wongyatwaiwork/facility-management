@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Personal full-stack portfolio demo modeled on fictional German facility operations."
+    />
+    <meta name="color-scheme" content="light dark" />
+    <title>Musterwerk Facility Operations — Portfolio Demo</title>
+    <script>
+      (() => {
+        const preference = localStorage.getItem('musterwerk-theme') || 'system';
+        const dark =
+          preference === 'dark' ||
+          (preference === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        document.documentElement.style.background = dark ? '#0b1220' : '#f4f6f8';
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

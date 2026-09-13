@@ -1,0 +1,89 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: musterwerk
+      POSTGRES_PASSWORD: musterwerk
+      POSTGRES_DB: musterwerk
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U musterwerk -d musterwerk']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      target: build
+    environment:
+      DATABASE_URL: postgresql://musterwerk:musterwerk@db:5432/musterwerk?schema=public
+    command: sh -c "npm run db:migrate:test && npm run db:seed"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      WEB_ORIGIN: http://localhost:5173
+      DATABASE_URL: postgresql://musterwerk:musterwerk@db:5432/musterwerk?schema=public
+      SESSION_COOKIE_NAME: musterwerk_session
+      SESSION_COOKIE_SECURE: 'false'
+      SESSION_TTL_HOURS: 8
+      LOG_LEVEL: info
+    ports:
+      - '4000:4000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:4000/api/ready']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VITE_API_URL: http://localhost:4000/api
+    ports:
+      - '5173:80'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/health']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  db-test:
+    image: postgres:16-alpine
+    profiles: ['test']
+    environment:
+      POSTGRES_USER: musterwerk
+      POSTGRES_PASSWORD: musterwerk
+      POSTGRES_DB: musterwerk_test
+    ports:
+      - '5433:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U musterwerk -d musterwerk_test']
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  postgres-data:

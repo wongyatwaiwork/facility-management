@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "types": ["node", "vitest/globals"],
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": ["src", "tests", "prisma/seed.ts"]
+}
