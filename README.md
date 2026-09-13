@@ -284,6 +284,8 @@ On bash, use `cp .env.example .env`. The Vite client runs at `5173` and Express 
 
 ## Deployment
 
+For the AWS-specific CloudFront, EC2, ECR, SSM, and private RDS deployment path, see [docs/AWS_DEPLOYMENT.md](docs/AWS_DEPLOYMENT.md). Local Docker development continues to use `docker-compose.yml`, `Dockerfile.web`, and `deploy/nginx.conf`.
+
 The implemented deployment artifacts target a conventional container platform:
 
 - build and publish `Dockerfile.api` and `Dockerfile.web` images;

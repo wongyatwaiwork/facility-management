@@ -4,6 +4,10 @@ node_modules
 **/dist
 coverage
 .env
+.env.*
+app.env
+deploy.env
+compose.yml
 playwright-report
 test-results
 *.tsbuildinfo

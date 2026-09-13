@@ -1,0 +1,43 @@
+services:
+  migrate:
+    image: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/portfolio/facility-migrate:${IMAGE_TAG}
+    env_file:
+      - app.env
+    networks:
+      - facility-internal
+
+  api:
+    image: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/portfolio/facility-api:${IMAGE_TAG}
+    env_file:
+      - app.env
+    restart: unless-stopped
+    expose:
+      - '4000'
+    networks:
+      - facility-internal
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:4000/api/ready']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  web:
+    image: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/portfolio/facility-web:${IMAGE_TAG}
+    restart: unless-stopped
+    ports:
+      - '8081:80'
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - facility-internal
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/health']
+      interval: 15s
+      timeout: 5s
+      retries: 6
+
+networks:
+  facility-internal:
+    driver: bridge

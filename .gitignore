@@ -4,6 +4,9 @@ coverage/
 .env
 .env.*
 !.env.example
+app.env
+deploy.env
+compose.yml
 playwright-report/
 test-results/
 *.tsbuildinfo
