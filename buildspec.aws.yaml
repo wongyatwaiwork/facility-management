@@ -1,0 +1,154 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_ACCOUNT_ID: "215472107452"
+    AWS_REGION: "ap-southeast-2"
+    WEB_REPOSITORY: "portfolio/facility-web"
+    API_REPOSITORY: "portfolio/facility-api"
+    MIGRATE_REPOSITORY: "portfolio/facility-migrate"
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+
+  pre_build:
+    commands:
+      - set -euo pipefail
+      - npm ci
+      - npm run db:generate
+      - npm run format:check
+      - npm run lint
+      - npm run typecheck
+      - npm run test:unit
+      - npm run build
+
+      - docker rm -f facility-postgres-test 2>/dev/null || true
+      - >
+        docker run -d --name facility-postgres-test
+        -e POSTGRES_USER=musterwerk
+        -e POSTGRES_PASSWORD=musterwerk
+        -e POSTGRES_DB=musterwerk_test
+        -p 5432:5432
+        postgres:16-alpine
+      - >
+        for i in $(seq 1 30); do
+          if docker exec facility-postgres-test
+          pg_isready -U musterwerk -d musterwerk_test; then
+            break;
+          fi;
+          sleep 2;
+        done
+      - export DATABASE_URL='postgresql://musterwerk:musterwerk@localhost:5432/musterwerk_test?schema=public'
+      - export TEST_DATABASE_URL="$DATABASE_URL"
+      - export NODE_ENV=test
+      - export WEB_ORIGIN='http://localhost:5173'
+      - npm run db:migrate:test
+      - npm run test:integration
+
+      - export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+      - export IMAGE_TAG="${CODEBUILD_RESOLVED_SOURCE_VERSION}"
+      - test -n "$IMAGE_TAG"
+      - >
+        aws ecr get-login-password --region "$AWS_REGION" |
+        docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+  build:
+    commands:
+      - set -euo pipefail
+      - >
+        docker build
+        --build-arg VITE_API_URL=/api
+        -f Dockerfile.web.aws
+        -t "$ECR_REGISTRY/$WEB_REPOSITORY:$IMAGE_TAG"
+        -t "$ECR_REGISTRY/$WEB_REPOSITORY:latest"
+        .
+      - >
+        docker build
+        -f Dockerfile.api
+        -t "$ECR_REGISTRY/$API_REPOSITORY:$IMAGE_TAG"
+        -t "$ECR_REGISTRY/$API_REPOSITORY:latest"
+        .
+      - >
+        docker build
+        --target migration
+        -f Dockerfile.api
+        -t "$ECR_REGISTRY/$MIGRATE_REPOSITORY:$IMAGE_TAG"
+        -t "$ECR_REGISTRY/$MIGRATE_REPOSITORY:latest"
+        .
+      - docker push "$ECR_REGISTRY/$WEB_REPOSITORY:$IMAGE_TAG"
+      - docker push "$ECR_REGISTRY/$WEB_REPOSITORY:latest"
+      - docker push "$ECR_REGISTRY/$API_REPOSITORY:$IMAGE_TAG"
+      - docker push "$ECR_REGISTRY/$API_REPOSITORY:latest"
+      - docker push "$ECR_REGISTRY/$MIGRATE_REPOSITORY:$IMAGE_TAG"
+      - docker push "$ECR_REGISTRY/$MIGRATE_REPOSITORY:latest"
+
+  post_build:
+    commands:
+      - set -euo pipefail
+      - |
+        cat > /tmp/ssm-parameters.json <<EOF
+        {
+          "commands": [
+            "set -euo pipefail",
+            "cd /opt/portfolio/facility",
+            "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}",
+            "printf 'IMAGE_TAG=${IMAGE_TAG}\n' > deploy.env",
+            "chmod 600 deploy.env",
+            "docker compose --env-file deploy.env pull",
+            "docker compose --env-file deploy.env run --rm migrate",
+            "docker compose --env-file deploy.env up -d --remove-orphans api web",
+            "docker image prune -f"
+          ]
+        }
+        EOF
+      - >
+        export COMMAND_ID="$(aws ssm send-command
+        --instance-ids "$AWS_INSTANCE_ID"
+        --document-name AWS-RunShellScript
+        --parameters file:///tmp/ssm-parameters.json
+        --timeout-seconds 900
+        --query 'Command.CommandId'
+        --output text)"
+      - echo "SSM command $COMMAND_ID"
+      - |
+        for attempt in $(seq 1 120); do
+          STATUS="$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$AWS_INSTANCE_ID" \
+            --query 'Status' \
+            --output text 2>/dev/null || true)"
+
+          case "$STATUS" in
+            Success)
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$AWS_INSTANCE_ID" \
+                --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}'
+              break
+              ;;
+            Failed|TimedOut|Cancelled|Cancelling)
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "$AWS_INSTANCE_ID" \
+                --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}'
+              exit 1
+              ;;
+          esac
+
+          if [ "$attempt" -eq 120 ]; then
+            echo "Timed out waiting for SSM deployment"
+            exit 1
+          fi
+
+          sleep 5
+        done
+      - >
+        curl --fail --silent --show-error
+        --retry 12 --retry-delay 5 --retry-all-errors
+        "https://${CLOUDFRONT_DOMAIN}/health"
+      - >
+        curl --fail --silent --show-error
+        --retry 12 --retry-delay 5 --retry-all-errors
+        "https://${CLOUDFRONT_DOMAIN}/api/ready"
