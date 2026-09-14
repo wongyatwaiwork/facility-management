@@ -45,7 +45,7 @@ export const en = {
   },
   overview: {
     eyebrow: 'Personal full-stack portfolio project',
-    title: 'Maintenance decisions with a visible operational trail',
+    title: 'Maintenance decisions with a visible operational trail Test automatic AWS deployment',
     summary:
       'A focused internal platform modeled on the work of a fictional German facilities team. Follow assets, work orders, preventive schedules, and inspection findings from due date to verified history.',
     disclaimer:
