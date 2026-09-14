@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { api } from '../api/client';
 import type { User } from '../api/types';
@@ -16,11 +17,13 @@ const AuthContext = createContext<AuthValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const { hydrate } = useSettings();
 
   useEffect(() => {
     void api<{ user: User }>('/auth/me')
       .then(({ user: restored }) => {
+        queryClient.clear();
         setUser(restored);
         hydrate(restored.locale, restored.theme);
       })
@@ -38,15 +41,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           body: JSON.stringify({ email, password }),
         });
         const profile = await api<{ user: User }>('/auth/me');
+        queryClient.clear();
         setUser(profile.user ?? result.user);
         hydrate(profile.user.locale, profile.user.theme);
       },
       logout: async () => {
         await api('/auth/logout', { method: 'POST' });
+        queryClient.clear();
         setUser(null);
       },
     }),
-    [hydrate, loading, user],
+    [hydrate, loading, queryClient, user],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
