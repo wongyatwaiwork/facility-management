@@ -31,20 +31,20 @@ The stack contains no real operational data. The Docker migration service seeds 
 
 ## Screenshots
 
-Screenshots have not been captured or committed. After running the stack, add truthful captures under `docs/screenshots/` using these names:
+![Manager operations dashboard](docs/screenshots/manager-dashboard.png)
 
-- `demo-overview.png`
-- `manager-dashboard.png`
-- `asset-history.png`
-- `work-order-transition.png`
-- `preventive-plans.png`
-- `inspection-checklist.png`
-- `audit-log.png`
-- `de-dark-theme.png`
-- `zh-hk-dashboard.png`
-- `mobile-technician.png`
+<details>
+<summary>View more workflow screenshots</summary>
 
-Do not add mockups and label them as application screenshots.
+| Verified work order                                                                    | Preventive maintenance plans                                                     |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| ![Verified work order with status history](docs/screenshots/work-order-transition.png) | ![Recurring preventive maintenance plans](docs/screenshots/preventive-plans.png) |
+
+![Inspection checklist with typed responses and findings](docs/screenshots/inspection-checklist.png)
+
+</details>
+
+These are captures of the running application using fictional seeded data, not mockups.
 
 ## Implemented features
 
@@ -61,7 +61,7 @@ Do not add mockups and label them as application screenshots.
 - Unit, PostgreSQL integration, localization, and Playwright journey tests.
 - Versioned PostgreSQL migration, deterministic fictional seed structure, multi-stage Dockerfiles, Compose services, health/readiness probes, and GitHub Actions.
 
-Actual binary file upload, user administration screens, inspection review/approval, exports, notifications, public hosting, and screenshot capture are deliberately not implemented.
+Actual binary file upload, user administration screens, inspection review/approval, exports, notifications, and public hosting are deliberately not implemented.
 
 ## Technology stack
 
